@@ -1,22 +1,33 @@
+import os
+
 from fastapi import FastAPI
 from neo4j import GraphDatabase
-import os
-from .pydantic_ontology import MetricIn, ALLOWED_UNITS, DiffOut
+
+from .pydantic_ontology import ALLOWED_UNITS, DiffOut, MetricIn
 
 app = FastAPI(title="Ingestion API", version="0.1.0")
 
+
 def _driver():
-    uri, user, pwd = os.getenv("NEO4J_URI"), os.getenv("NEO4J_USER"), os.getenv("NEO4J_PASSWORD")
-    if not all([uri,user,pwd]): raise RuntimeError("Set NEO4J_* env vars")
+    uri, user, pwd = (
+        os.getenv("NEO4J_URI"),
+        os.getenv("NEO4J_USER"),
+        os.getenv("NEO4J_PASSWORD"),
+    )
+    if not all([uri, user, pwd]):
+        raise RuntimeError("Set NEO4J_* env vars")
     return GraphDatabase.driver(uri, auth=(user, pwd))
+
 
 @app.get("/ontology/units")
 def units():
     return {"units": ALLOWED_UNITS}
 
+
 @app.get("/ontology/diff", response_model=DiffOut)
 def diff():
     return DiffOut(added_units=[])
+
 
 @app.post("/ingest")
 def ingest(m: MetricIn):

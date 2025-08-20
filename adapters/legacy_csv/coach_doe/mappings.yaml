@@ -1,0 +1,8 @@
+athlete_id: ath_id
+session_id: sess
+ts: when
+name: metric
+unit: unit
+value: val
+coach_id: doe
+
