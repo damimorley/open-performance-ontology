@@ -1,0 +1,24 @@
+@prefix : <http://example.org/sports#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:Athlete rdf:type rdfs:Class .
+:Session rdf:type rdfs:Class .
+:Metric  rdf:type rdfs:Class .
+
+:athleteId rdf:type rdf:Property ; rdfs:domain :Athlete ; rdfs:range xsd:string .
+:coachId   rdf:type rdf:Property ; rdfs:domain :Athlete ; rdfs:range xsd:string .
+:sessionId rdf:type rdf:Property ; rdfs:domain :Session ;  rdfs:range xsd:string .
+:ts        rdf:type rdf:Property ; rdfs:domain :Session ;  rdfs:range xsd:dateTime .
+:name      rdf:type rdf:Property ; rdfs:domain :Metric ;   rdfs:range xsd:string .
+:unit      rdf:type rdf:Property ; rdfs:domain :Metric ;   rdfs:range xsd:string .
+:value     rdf:type rdf:Property ; rdfs:domain :Metric ;   rdfs:range xsd:double .
+
+:hasSession rdf:type rdf:Property ; rdfs:domain :Athlete ; rdfs:range :Session .
+:recorded   rdf:type rdf:Property ; rdfs:domain :Session ; rdfs:range :Metric .
+
+:AllowedUnit rdf:type rdfs:Class .
+:bpm rdf:type :AllowedUnit .
+:kg  rdf:type :AllowedUnit .
+:W   rdf:type :AllowedUnit .
