@@ -1,0 +1,181 @@
+# api/main.py
+from fastapi import FastAPI, Header, HTTPException, Depends, Query
+from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware
+from neo4j import GraphDatabase
+import os
+from dotenv import load_dotenv
+
+from .pydantic_ontology import MetricIn, ALLOWED_UNITS, DiffOut
+from .batch import MetricsBatch
+
+# Load env so NEO4J_* is available
+load_dotenv(".env")
+
+app = FastAPI(title="Ingestion API", version="0.2.0")
+
+# Dev CORS so a local form/app can call the API (tighten later)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
+
+# --- Secrets / drivers -------------------------------------------------------
+def _driver():
+    uri = os.getenv("NEO4J_URI")
+    user = os.getenv("NEO4J_USER")
+    pwd  = os.getenv("NEO4J_PASSWORD")
+    if not all([uri, user, pwd]):
+        raise RuntimeError("Missing NEO4J_* env vars")
+    return GraphDatabase.driver(uri, auth=(user, pwd))
+
+# Dev API keys (move to env/DB later)
+API_KEYS = {"demo-doe-key": "doe"}
+
+def _coach_guard(x_api_key: str | None = Header(default=None)):
+    coach_id = API_KEYS.get(x_api_key or "")
+    if not coach_id:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return coach_id
+
+# --- Routes ------------------------------------------------------------------
+@app.get("/")
+def root():
+    return RedirectResponse(url="/docs")
+
+@app.get("/ontology/units")
+def units():
+    return {"units": ALLOWED_UNITS}
+
+@app.get("/ontology/diff", response_model=DiffOut)
+def diff():
+    return DiffOut(added_units=[])
+
+_WRITE_Q = """
+MERGE (a:Athlete {athlete_id: $athlete_id, coach_id: $coach_id})
+MERGE (s:Session {session_id: $session_id, ts: datetime($ts), coach_id: $coach_id})
+MERGE (a)-[:ATTENDED]->(s)
+CREATE (mt:Metric {name: $name, unit: $unit, value: $value, coach_id: $coach_id})
+MERGE (s)-[:RECORDED]->(mt)
+"""
+
+@app.post("/ingest")
+def ingest(m: MetricIn, coach_id: str = Depends(_coach_guard)):
+    data = m.model_dump()
+    data["coach_id"] = coach_id  # never trust client coach_id
+    with _driver().session() as s:
+        s.run(_WRITE_Q, **data)
+    return {"ok": True}
+
+@app.post("/ingest/batch")
+def ingest_batch(batch: MetricsBatch, coach_id: str = Depends(_coach_guard)):
+    with _driver().session() as s:
+        for item in batch.items:
+            data = item.model_dump()
+            data["coach_id"] = coach_id
+            s.run(_WRITE_Q, **data)
+    return {"ok": True, "count": len(batch.items)}
+
+@app.get("/athletes/{athlete_id}/metrics")
+def metrics(athlete_id: str, since: str | None = Query(default=None),
+            coach_id: str = Depends(_coach_guard)):
+    q = """
+    MATCH (a:Athlete {athlete_id:$athlete_id, coach_id:$coach_id})-[:ATTENDED]->(s)-[:RECORDED]->(m)
+    WHERE $since IS NULL OR s.ts >= datetime($since)
+    RETURN a.athlete_id AS athlete_id, s.session_id AS session_id,
+           m.name AS name, m.value AS value, m.unit AS unit, s.ts AS ts
+    ORDER BY ts DESC
+    """
+    with _driver().session() as s:
+        return [dict(r) for r in s.run(q, athlete_id=athlete_id,
+                                       coach_id=coach_id, since=since)]
+import os
+
+from fastapi import FastAPI
+from neo4j import GraphDatabase
+import os
+from dotenv import load_dotenv
+from .pydantic_ontology import ALLOWED_UNITS, DiffOut, MetricIn
+
+load_dotenv(".env")
+
+app = FastAPI(title="Ingestion API", version="0.1.0")
+
+
+def _driver():
+    uri, user, pwd = (
+        os.getenv("NEO4J_URI"),
+        os.getenv("NEO4J_USER"),
+        os.getenv("NEO4J_PASSWORD"),
+    )
+    if not all([uri, user, pwd]):
+        raise RuntimeError("Set NEO4J_* env vars")
+    return GraphDatabase.driver(uri, auth=(user, pwd))
+
+# api/main.py
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from neo4j import GraphDatabase
+import os
+from dotenv import load_dotenv
+
+from .pydantic_ontology import MetricIn, ALLOWED_UNITS, DiffOut
+
+# ✅ load your .env so NEO4J_* is available when the server starts
+load_dotenv(".env")
+
+app = FastAPI(title="Ingestion API", version="0.1.0")
+
+def _driver():
+    uri = os.getenv("NEO4J_URI")
+    user = os.getenv("NEO4J_USER")
+    pwd  = os.getenv("NEO4J_PASSWORD")
+    if not all([uri, user, pwd]):
+        raise RuntimeError("Set NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD in .env")
+    return GraphDatabase.driver(uri, auth=(user, pwd))
+
+# ✅ Redirect root to Swagger so hitting "/" doesn't 404
+@app.get("/")
+def root():
+    return RedirectResponse(url="/docs")
+
+@app.get("/ontology/units")
+def units():
+    return {"units": ALLOWED_UNITS}
+
+@app.get("/ontology/diff", response_model=DiffOut)
+def diff():
+    return DiffOut(added_units=[])
+
+@app.post("/ingest")
+def ingest(m: MetricIn):
+    q = """
+    MERGE (a:Athlete {athlete_id: $athlete_id, coach_id: $coach_id})
+    MERGE (s:Session {session_id: $session_id, ts: datetime($ts), coach_id: $coach_id})
+    MERGE (a)-[:ATTENDED]->(s)
+    CREATE (mt:Metric {name: $name, unit: $unit, value: $value, coach_id: $coach_id})
+    MERGE (s)-[:RECORDED]->(mt)
+    """
+    with _driver().session() as s:
+        s.run(q, **m.model_dump())
+    return {"ok": True}
+
+
+
+@app.get("/ontology/diff", response_model=DiffOut)
+def diff():
+    return DiffOut(added_units=[])
+
+
+@app.post("/ingest")
+def ingest(m: MetricIn):
+    q = """
+    MERGE (a:Athlete {athlete_id: $athlete_id, coach_id: $coach_id})
+    MERGE (s:Session {session_id: $session_id, ts: datetime($ts), coach_id: $coach_id})
+    MERGE (a)-[:ATTENDED]->(s)
+    CREATE (mt:Metric {name: $name, unit: $unit, value: $value, coach_id: $coach_id})
+    MERGE (s)-[:RECORDED]->(mt)
+    """
+    with _driver().session() as s:
+        s.run(q, **m.model_dump())
+    return {"ok": True}
