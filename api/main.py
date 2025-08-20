@@ -1,13 +1,14 @@
+import os
+from typing import List
+
+from dotenv import load_dotenv
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from neo4j import GraphDatabase
-import os
-from dotenv import load_dotenv
-from .pydantic_ontology import MetricIn, ALLOWED_UNITS
 from pydantic import BaseModel
-from typing import List
-from fastapi.middleware.cors import CORSMiddleware
 
+from .pydantic_ontology import ALLOWED_UNITS, MetricIn
 
 load_dotenv(".env")
 
