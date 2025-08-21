@@ -1,4 +1,3 @@
-
 import os
 from typing import Any, Dict, List, Optional
 
@@ -34,6 +33,7 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+
 # ------------------------------------------------------------
 # Neo4j driver factory — always use _driver().session()
 # ------------------------------------------------------------
@@ -42,8 +42,11 @@ def _driver():
     user = os.getenv("NEO4J_USER", "neo4j")
     pwd = os.getenv("NEO4J_PASSWORD") or os.getenv("NEO4J_PASS") or "testpassword"
     if not all([uri, user, pwd]):
-        raise RuntimeError("Missing NEO4J_* env vars (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)")
+        raise RuntimeError(
+            "Missing NEO4J_* env vars (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD)"
+        )
     return GraphDatabase.driver(uri, auth=(user, pwd))
+
 
 # ------------------------------------------------------------
 # Models
@@ -52,12 +55,15 @@ class AthleteIn(BaseModel):
     id: str
     name: str
 
+
 class MetricsBatch(BaseModel):
     items: List[MetricIn]
+
 
 class CypherReq(BaseModel):
     query: str
     params: Optional[Dict[str, Any]] = None
+
 
 class MeasurementIn(BaseModel):
     athlete_id: str
@@ -68,12 +74,12 @@ class MeasurementIn(BaseModel):
 
 API_KEYS = {"demo-doe-key": "doe"}
 
+
 def _coach_from_key(x_api_key: str) -> str:
     cid = API_KEYS.get(x_api_key)
     if not cid:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return cid
-
 
 
 # ------------------------------------------------------------
@@ -83,15 +89,18 @@ def _coach_from_key(x_api_key: str) -> str:
 def root():
     return RedirectResponse("/docs")
 
+
 @app.get("/_debug")
 def debug():
     return {"file": __file__, "version": app.version}
+
 
 @app.get("/health")
 def health():
     with _driver().session() as s:
         s.run("RETURN 1").single()
     return {"status": "ok"}
+
 
 @app.get("/athletes", summary="List Athletes")
 def list_athletes():
@@ -103,9 +112,11 @@ def list_athletes():
     with _driver().session() as s:
         return [r.data() for r in s.run(cypher)]
 
+
 @app.get("/ontology/units", summary="Units")
 def units():
     return {"units": ALLOWED_UNITS}
+
 
 _WRITE_Q = """
 MERGE (a:Athlete {athlete_id: $athlete_id, coach_id: $coach_id})
@@ -115,6 +126,7 @@ MERGE (m:Metric {name: $name, unit: $unit, value: $value, coach_id: $coach_id})
 MERGE (s)-[:RECORDED]->(m)
 """
 
+
 @app.post("/ingest", summary="Ingest")
 def ingest(m: MetricIn, x_api_key: str = Header(..., alias="X-API-Key")):
     coach_id = _coach_from_key(x_api_key)
@@ -123,6 +135,7 @@ def ingest(m: MetricIn, x_api_key: str = Header(..., alias="X-API-Key")):
     with _driver().session() as s:
         s.run(_WRITE_Q, **data)
     return {"ok": True}
+
 
 @app.post("/measurements", summary="Create Athlete→MEASURED→Metric")
 def create_measurement(m: MeasurementIn):
@@ -145,6 +158,7 @@ def create_measurement(m: MeasurementIn):
         ).single()
     return rec.data() if rec else {}
 
+
 @app.post("/ingest/batch", summary="Ingest Batch")
 def ingest_batch(batch: MetricsBatch, x_api_key: str = Header(..., alias="X-API-Key")):
     coach_id = _coach_from_key(x_api_key)
@@ -154,6 +168,7 @@ def ingest_batch(batch: MetricsBatch, x_api_key: str = Header(..., alias="X-API-
             data["coach_id"] = coach_id
             s.run(_WRITE_Q, **data)
     return {"ok": True, "count": len(batch.items)}
+
 
 @app.post("/athletes", summary="Create Athlete")
 def create_athlete(athlete: AthleteIn):
@@ -166,19 +181,18 @@ def create_athlete(athlete: AthleteIn):
         rec = s.run(cypher, id=athlete.id, name=athlete.name).single()
     return rec.data() if rec else {}
 
+
 ALLOWED_PREFIXES = ("MATCH", "RETURN", "WITH", "UNWIND", "CALL", "PROFILE", "EXPLAIN")
+
 
 @app.post("/cypher", summary="Run read-only Cypher (demo)")
 def cypher_read(req: CypherReq):
     q = (req.query or "").strip()
     if not q.upper().startswith(ALLOWED_PREFIXES):
-        raise HTTPException(400, "Only read-style queries are allowed here for the demo.")
+        raise HTTPException(
+            400, "Only read-style queries are allowed here for the demo."
+        )
     with _driver().session() as s:
         result = s.run(q, req.params or {})
         rows = [r.data() for r in result]
     return {"rows": rows, "count": len(rows)}
-
-
-
-
-
